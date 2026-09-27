@@ -12,6 +12,7 @@ from document_service import enregistrer_document
 from embedding_service import vectoriser_information
 from typing import Optional
 from recherche_service import rechercher_informations
+from rag_service import repondre_avec_rag
 
 app = FastAPI(
     title="API de gestion de données",
@@ -246,4 +247,52 @@ def rechercher(donnees: DemandeRecherche):
         raise HTTPException(
             status_code=502,
             detail="Un vecteur ou une réponse du modèle est invalide.",
+        )
+
+@app.post("/rag/question")
+def poser_question(donnees: DemandeRecherche):
+    if not donnees.question.strip():
+        raise HTTPException(
+            status_code=422,
+            detail="La question ne doit pas être vide.",
+        )
+
+    try:
+        return repondre_avec_rag(
+            question=donnees.question,
+            limite=donnees.limite,
+            document_id=donnees.document_id,
+        )
+
+    except httpx.TimeoutException:
+        raise HTTPException(
+            status_code=504,
+            detail="Le traitement RAG a dépassé le délai.",
+        )
+
+    except httpx.HTTPStatusError:
+        logging.exception("Erreur renvoyée par Ollama")
+        raise HTTPException(
+            status_code=502,
+            detail="Ollama a refusé une étape du traitement.",
+        )
+
+    except httpx.RequestError:
+        raise HTTPException(
+            status_code=503,
+            detail="Impossible de communiquer avec Ollama.",
+        )
+
+    except pymysql.MySQLError:
+        logging.exception("Erreur MySQL pendant le RAG")
+        raise HTTPException(
+            status_code=503,
+            detail="Impossible de consulter les informations.",
+        )
+
+    except (ValueError, TypeError) as erreur:
+        logging.exception("Erreur pendant le RAG")
+        raise HTTPException(
+            status_code=502,
+            detail=str(erreur),
         )

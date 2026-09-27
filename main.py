@@ -10,6 +10,8 @@ from services import extraire_phrases_importantes
 from llm_service import extraire_avec_ollama, ResultatExtraction
 from document_service import enregistrer_document
 from embedding_service import vectoriser_information
+from typing import Optional
+from recherche_service import rechercher_informations
 
 app = FastAPI(
     title="API de gestion de données",
@@ -51,6 +53,10 @@ class DocumentAEnregistrer(BaseModel):
     texte: str = Field(min_length=1)
     extraction: ResultatExtraction
 
+class DemandeRecherche(BaseModel):
+    question: str = Field(min_length=1)
+    limite: int = Field(default=5, ge=1, le=50)
+    document_id: Optional[int] = Field(default=None, gt=0)
 
 @app.post("/textes/extraire-ia", response_model=ResultatExtraction)
 def analyser_texte_avec_ia(donnees: DemandeExtractionIA):
@@ -193,3 +199,51 @@ def creer_embedding(information_id: int):
 
     except ValueError as erreur:
         raise HTTPException(status_code=502, detail=str(erreur))
+
+@app.post("/recherche")
+def rechercher(donnees: DemandeRecherche):
+    if not donnees.question.strip():
+        raise HTTPException(
+            status_code=422,
+            detail="La question ne doit pas être vide.",
+        )
+
+    try:
+        return rechercher_informations(
+            question=donnees.question,
+            limite=donnees.limite,
+            document_id=donnees.document_id,
+        )
+
+    except httpx.TimeoutException:
+        raise HTTPException(
+            status_code=504,
+            detail="La vectorisation de la question a dépassé le délai.",
+        )
+
+    except httpx.HTTPStatusError:
+        logging.exception("Erreur Ollama pendant la recherche")
+        raise HTTPException(
+            status_code=502,
+            detail="Ollama a refusé la vectorisation de la question.",
+        )
+
+    except httpx.RequestError:
+        raise HTTPException(
+            status_code=503,
+            detail="Impossible de communiquer avec Ollama.",
+        )
+
+    except pymysql.MySQLError:
+        logging.exception("Erreur MySQL pendant la recherche")
+        raise HTTPException(
+            status_code=503,
+            detail="Impossible de consulter la base de données.",
+        )
+
+    except (ValueError, TypeError):
+        logging.exception("Données vectorielles invalides")
+        raise HTTPException(
+            status_code=502,
+            detail="Un vecteur ou une réponse du modèle est invalide.",
+        )

@@ -1,0 +1,26 @@
+# Environnement virtuel
+.venv/
+venv/
+
+# Secrets
+.env
+.env.*
+!.env.example
+
+# Fichiers Python générés
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Éditeurs
+.idea/
+.vscode/
+
+# Journaux
+*.log
+
+# Données locales et transcriptions
+data/
+uploads/
+backups/
+*.sql

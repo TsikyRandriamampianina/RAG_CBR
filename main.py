@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 from services import extraire_phrases_importantes
 from llm_service import extraire_avec_ollama, ResultatExtraction
 from document_service import enregistrer_document
+from embedding_service import vectoriser_information
 
 app = FastAPI(
     title="API de gestion de données",
@@ -142,6 +143,53 @@ def creer_document(donnees: DocumentAEnregistrer):
             status_code=503,
             detail="Impossible d'enregistrer le document.",
         )
+
 # @app.post("/textes/test-ollama")
 # def test_ollama(donnees: DemandeExtractionIA):
 #     return tester_ollama(donnees.texte)
+
+@app.post("/informations/{information_id}/embedding")
+def creer_embedding(information_id: int):
+    if information_id <= 0:
+        raise HTTPException(
+            status_code=422,
+            detail="L'identifiant doit être positif.",
+        )
+
+    try:
+        return vectoriser_information(information_id)
+
+    except LookupError as erreur:
+        raise HTTPException(status_code=404, detail=str(erreur))
+
+    except httpx.TimeoutException:
+        raise HTTPException(
+            status_code=504,
+            detail="La génération du vecteur a dépassé le délai.",
+        )
+
+    except httpx.HTTPStatusError:
+        logging.exception("Erreur renvoyée par Ollama")
+        raise HTTPException(
+            status_code=502,
+            detail=(
+                "Ollama a refusé la vectorisation. "
+                "Vérifie le modèle installé et la longueur du texte."
+            ),
+        )
+
+    except httpx.RequestError:
+        raise HTTPException(
+            status_code=503,
+            detail="Impossible de communiquer avec Ollama.",
+        )
+
+    except pymysql.MySQLError:
+        logging.exception("Erreur MySQL pendant la vectorisation")
+        raise HTTPException(
+            status_code=503,
+            detail="Impossible de lire ou d'enregistrer les données.",
+        )
+
+    except ValueError as erreur:
+        raise HTTPException(status_code=502, detail=str(erreur))
